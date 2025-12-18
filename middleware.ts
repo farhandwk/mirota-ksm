@@ -18,7 +18,7 @@ export async function middleware(req: NextRequest) {
 
   // 2. Aturan Akses Berdasarkan Role
 
-  // --- ROLE: PETUGAS ---
+  // --- ROLE: PETUGASA ---
   // Hanya boleh akses halaman yang berawalan /petugas
   if (role === 'Petugas') {
     if (!pathname.startsWith('/petugas')) {
@@ -55,6 +55,8 @@ export const config = {
     '/analytics/:path*', 
     '/departments/:path*', 
     '/units/:path*', 
-    '/petugas/:path*'
+    '/petugas/:path*',
+    '/laporan/:path',
+    '/gudang/:path'
   ],
 };

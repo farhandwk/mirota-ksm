@@ -35,7 +35,7 @@ export default function DepartmentsPage() {
 
   // Handler: Simpan (Bisa Tambah atau Update)
   async function handleSubmit() {
-    if (!formData.nama) return alert("Nama departemen wajib diisi");
+    if (!formData.nama) return alert("Nama gudang wajib diisi");
     
     setIsSubmitting(true);
 
@@ -75,7 +75,7 @@ export default function DepartmentsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(`Hapus departemen ${id}? Pastikan tidak ada produk yang terikat!`)) return;
+    if (!confirm(`Hapus gudang ${id}? Pastikan tidak ada produk yang terikat!`)) return;
 
     await fetch(`/api/departments?id=${id}`, { method: 'DELETE' });
     mutate();
@@ -90,8 +90,8 @@ export default function DepartmentsPage() {
         
         {/* HEADER */}
         <div>
-          <h1 className="text-3xl font-bold text-[#004aad]">Manajemen Departemen</h1>
-          <p className="text-gray-500">Kelola divisi gudang (Tambah, Edit, Hapus).</p>
+          <h1 className="text-3xl font-bold text-[#004aad]">Manajemen Gudang</h1>
+          <p className="text-gray-500">Kelola gudang (Tambah, Edit, Hapus).</p>
         </div>
 
         {/* FORM INPUT / EDIT */}
@@ -101,23 +101,23 @@ export default function DepartmentsPage() {
                   {editingId ? (
                     <>
                       <Pencil className="w-5 h-5 text-orange-600"/> 
-                      <span className="text-orange-700">Edit Departemen: {editingId}</span>
+                      <span className="text-orange-700">Edit Gudang: {editingId}</span>
                     </>
                   ) : (
-                    "Tambah Departemen Baru"
+                    "Tambah Gudang Baru"
                   )}
                 </CardTitle>
                 <CardDescription>
                   {editingId 
                     ? "Silakan ubah nama atau deskripsi, lalu klik Simpan." 
-                    : "ID Departemen akan dibuat otomatis (D-XXX)"}
+                    : "ID Gudang akan dibuat otomatis (D-XXX)"}
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col md:flex-row gap-4 items-end">
                     
                     <div className="w-full md:w-1/3 space-y-2">
-                        <label className="text-sm font-medium">Nama Departemen</label>
+                        <label className="text-sm font-medium">Nama Gudang</label>
                         <Input 
                             placeholder="Cth: Logistik" 
                             value={formData.nama}
@@ -164,7 +164,7 @@ export default function DepartmentsPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>ID Dept</TableHead>
+                            <TableHead>ID Gudang</TableHead>
                             <TableHead>Nama</TableHead>
                             <TableHead>Deskripsi</TableHead>
                             <TableHead className="text-right">Aksi</TableHead>
@@ -174,7 +174,7 @@ export default function DepartmentsPage() {
                         {!data?.data ? (
                             <TableRow><TableCell colSpan={4} className="text-center py-4">Memuat...</TableCell></TableRow>
                         ) : data.data.length === 0 ? (
-                            <TableRow><TableCell colSpan={4} className="text-center py-4 text-gray-400">Belum ada departemen</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={4} className="text-center py-4 text-gray-400">Belum ada Gudang</TableCell></TableRow>
                         ) : (
                           data?.data?.map((dept: any) => (
                             <TableRow key={dept.id} className={editingId === dept.id ? "bg-orange-50" : ""}>

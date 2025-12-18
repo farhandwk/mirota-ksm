@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
+import Image from "next/image"
 import { useRouter } from 'next/navigation';
 import { Button } from "../../components/ui/button";
 import { Input } from "../..//components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Lock, User } from "lucide-react";
+import mirota from "../../src/logo.png"
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,8 +41,11 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       <Card className="w-full max-w-md shadow-xl border-t-4 border-t-[#004aad]">
         <CardHeader className="text-center space-y-2">
-          <div className="mx-auto w-16 h-16 bg-[#004aad] rounded-xl flex items-center justify-center mb-2">
-             <span className="text-white font-bold text-2xl">M</span>
+          <div className="mx-auto w-16 h-16 bg-none rounded-xl flex items-center justify-center mb-2">
+             <Image 
+             src={mirota}
+             alt ="Logo Mirota KSM"
+             />
           </div>
           <CardTitle className="text-2xl font-bold text-[#004aad]">Mirota KSM</CardTitle>
           <CardDescription>Login Sistem Gudang Terpadu</CardDescription>

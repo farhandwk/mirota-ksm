@@ -4,7 +4,9 @@ import { useSession, signOut } from "next-auth/react";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from "../components/ui/button";
-import { Package, History, LogOut, ChartPie, Building2, Scale, Users } from "lucide-react";
+import { Package, History, LogOut, ChartPie, Building2, Scale, Users, ClipboardList, Warehouse } from "lucide-react";
+import mirota from "../src/logo.png"
+import Image from "next/image"
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -23,15 +25,16 @@ export default function Navbar() {
   const isActive = (path: string) => pathname === path;
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 flex flex-wrap">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
+        <div className="flex justify-between h-16 items-center gap-4">
           
           <div className="flex-shrink-0 flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#004aad] rounded-lg flex items-center justify-center">
-               <span className="text-white font-bold text-lg">M</span>
-            </div>
-            <span className="font-bold text-xl text-[#004aad] tracking-tight">Mirota KSM</span>
+            <Image
+               src={mirota}
+               alt="logo mirota"
+               width={100}
+               />
           </div>
 
           {/* Menu Links (Hanya Kepala Gudang yang lihat ini) */}
@@ -46,9 +49,9 @@ export default function Navbar() {
                 <History className="w-4 h-4 mr-2" /> Riwayat
               </Button>
             </Link>
-            <Link href="/departments">
-              <Button variant={isActive('/departments') ? 'default' : 'ghost'} className={isActive('/departments') ? 'bg-[#004aad]' : 'text-gray-600 hover:text-[#004aad] hover:bg-blue-50'}>
-                <Building2 className="w-4 h-4 mr-2" /> Dept
+            <Link href="/gudang">
+              <Button variant={isActive('/departments') ? 'default' : 'ghost'} className={isActive('/gudang') ? 'bg-[#004aad]' : 'text-gray-600 hover:text-[#004aad] hover:bg-blue-50'}>
+                <Warehouse className="w-4 h-4 mr-2" /> Gudang
               </Button>
             </Link>
 
@@ -70,6 +73,24 @@ export default function Navbar() {
               </Button>
             </Link>
           </div>
+
+          {/* --- MENU BARU: LAPORAN Opname --- */}
+            <Link href="/laporan">
+              <Button variant={isActive('/laporan') ? 'default' : 'ghost'} className={isActive('/laporan') ? 'bg-[#004aad]' : 'text-gray-600 hover:text-[#004aad] hover:bg-blue-50'}>
+                <ClipboardList className="w-4 h-4 mr-2" /> Stok Opname
+              </Button>
+            </Link>
+            {/* ------------------------- */}
+
+            {/* --- MENU BARU: Riwayat Opname --- */}
+            <Link href="/laporan/riwayat">
+              <Button variant={isActive('/laporan') ? 'default' : 'ghost'} className={isActive('/laporan') ? 'bg-[#004aad]' : 'text-gray-600 hover:text-[#004aad] hover:bg-blue-50'}>
+                <ClipboardList className="w-4 h-4 mr-2" /> Riwayat Stok Opname
+              </Button>
+            </Link>
+            {/* ------------------------- */}
+
+            <Link href="/history"></Link>
 
           {/* User Info & Logout */}
           <div className="flex items-center gap-4">
