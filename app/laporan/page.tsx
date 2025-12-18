@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Navbar from '@/components/Navbar';
+import Navbar from '../../components/Navbar';
 import { Loader2, ClipboardList, FileSpreadsheet, Save } from 'lucide-react'; // Tambah icon Save
 import * as XLSX from 'xlsx';
 
