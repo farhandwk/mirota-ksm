@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from "next-auth"; // Import Session
+import { authOptions } from "../auth/[...nextauth]/route"; // Pastikan path ini sesuai dengan lokasi authOptions Anda
 import { loadSpreadsheet, SHEET_TITLES } from '../../../lib/googleSheets';
 import { transactionSchema } from '../../../lib/validators';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,15 +8,14 @@ import { v4 as uuidv4 } from 'uuid';
 export async function GET() {
   try {
     const doc = await loadSpreadsheet();
-    // Pastikan nama sheet ini sesuai dengan konstanta SHEET_TITLES.TRANSACTIONS anda
     const sheet = doc.sheetsByTitle[SHEET_TITLES.TRANSACTIONS]; 
     const rows = await sheet.getRows();
 
-    // Kita balik urutannya (reverse) agar transaksi terbaru muncul paling atas
+    // Mapping data
     const transactions = rows.map((row) => ({
       id: row.get('id'),
       date: row.get('tanggal'),
-      type: row.get('tipe'), // IN atau OUT
+      type: row.get('tipe'),
       qr_code: row.get('kode_qr_produk'),
       qty: row.get('qty'),
       pic: row.get('petugas'),
@@ -29,23 +30,36 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    // 1. CEK SESSION / LOGIN (PERBAIKAN UTAMA)
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized: Anda harus login." }, { status: 401 });
+    }
+
+    // Ambil nama user dari session (misal: "Budi")
+    // Fallback ke email jika nama kosong, atau "Unknown" jika keduanya kosong
+    const currentUser = session.user.name || session.user.email || "Unknown User";
+
+    // 2. Baca Body Request
     const body = await request.json();
 
-    // 1. Validasi Input
+    // 3. Validasi Input (Zod)
     const validation = transactionSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json({ success: false, error: validation.error.flatten() }, { status: 400 });
     }
 
-    const { qr_code, type, quantity, department_id, petugas } = validation.data;
+    // Kita abaikan 'petugas' dari frontend (validation.data.petugas)
+    // Kita pakai 'currentUser' dari session agar aman dan akurat
+    const { qr_code, type, quantity, department_id } = validation.data;
 
-    // 2. Load Spreadsheet
+    // 4. Load Spreadsheet
     const doc = await loadSpreadsheet();
     const productSheet = doc.sheetsByTitle[SHEET_TITLES.PRODUCTS];
     const logSheet = doc.sheetsByTitle[SHEET_TITLES.TRANSACTIONS];
 
-    // 3. Cari Produk berdasarkan QR Code
-    // (Google Sheets tidak punya query cepat, jadi kita ambil semua baris lalu filter di memori)
+    // 5. Cari Produk
     const productRows = await productSheet.getRows();
     const productRow = productRows.find((row) => row.get('kode_qr') === qr_code);
 
@@ -57,9 +71,9 @@ export async function POST(request: Request) {
     const productDept = productRow.get('id_departemen');
     const productName = productRow.get('nama_produk');
 
-    // 4. LOGIKA BISNIS: CEK DEPARTEMEN & STOK
+    // 6. LOGIKA BISNIS
     if (type === 'IN') {
-      // Validasi "Salah Kamar"
+      // Validasi Salah Kamar
       if (department_id && productDept !== department_id) {
         return NextResponse.json({ 
           success: false, 
@@ -67,11 +81,11 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
       
-      // Update Stok (Tambah)
+      // Tambah Stok
       productRow.set('stok', (currentStock + quantity).toString());
     } 
     else if (type === 'OUT') {
-      // Cek Stok Cukup gak?
+      // Cek Stok Cukup
       if (currentStock < quantity) {
         return NextResponse.json({ 
           success: false, 
@@ -79,24 +93,27 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
 
-      // Update Stok (Kurang)
+      // Kurang Stok
       productRow.set('stok', (currentStock - quantity).toString());
     }
 
-    // 5. Simpan Perubahan Stok ke Sheet Produk
+    // 7. Simpan Perubahan Stok ke Sheet Produk
     const now = new Date().toISOString();
     productRow.set('updated_at', now);
-    await productRow.save(); // <-- Ini yang menyimpan angka stok baru ke Google Sheet
+    await productRow.save();
 
-    // 6. Catat ke Log Transaksi (History)
+    // 8. Catat ke Log Transaksi (History)
+    // PERHATIKAN: kolom 'petugas' diisi oleh variable 'currentUser'
     await logSheet.addRow({
       id: uuidv4(),
       tanggal: now,
       tipe: type,
       kode_qr_produk: qr_code,
       qty: quantity,
-      petugas: petugas,
-      id_departemen: productDept // Kita catat aslinya barang ini punya siapa
+      
+      petugas: currentUser, // <-- INI PERBAIKANNYA (Dynamic User)
+      
+      id_departemen: productDept
     });
 
     return NextResponse.json({
