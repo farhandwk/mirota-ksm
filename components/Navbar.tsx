@@ -112,7 +112,7 @@ export default function Sidebar() {
         </div>
 
         {/* 2. Menu Items (Scrollable area) */}
-        <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-2 px-3">
+        <div className="pb-[15%] lg:pb-0 lg:flex-1 overflow-y-auto py-4 flex flex-col gap-2 px-3">
           {menuItems.map((item) => {
             const active = isActive(item.href);
             return (
