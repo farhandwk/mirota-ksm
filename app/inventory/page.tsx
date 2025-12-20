@@ -107,7 +107,7 @@ export default function InventoryPage() {
                       <SelectItem value="empty" disabled>Belum ada Dept</SelectItem>
                     ) : (
                       // LOOPING DATA DARI API
-                      deptData.data.map((dept: any) => (
+                      deptData?.data.map((dept: any) => (
                         <SelectItem key={dept.id} value={dept.id}>
                           {dept.id} ({dept.nama})
                         </SelectItem>

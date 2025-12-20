@@ -21,7 +21,9 @@ export default function RootLayout({
       <body className={inter.className}>
         {/* Bungkus aplikasi dengan Providers buatan kita */}
         <Providers>
-           {children}
+           <main className="pl-0 md:pl-20 pt-16 md:pt-0 min-h-screen bg-gray-50 transition-all duration-300">
+            {children}
+          </main>
         </Providers>
       </body>
     </html>
