@@ -1,215 +1,316 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
-import Navbar from '../../components/Navbar';
+import { 
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+} from "../../components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Trash2, Plus, UserCog, Pencil, X, Save, Shield, Key } from "lucide-react";
+import { Label } from "../../components/ui/label";
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from "../../components/ui/select";
+import { Badge } from "../../components/ui/badge";
+import Navbar from "../../components/Navbar"
+import { Search, Filter, X, UserPlus, Trash2, Shield, User } from "lucide-react"; 
+
+// --- UTILITY: DEBOUNCE HOOK ---
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function UsersPage() {
-  const { data, mutate } = useSWR('/api/users', fetcher);
-  
-  const [formData, setFormData] = useState({ username: '', password: '', role: '', fullname: '' });
-  const [editingId, setEditingId] = useState<string | null>(null); // Menyimpan username yang diedit
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // 1. Fetch Data Users
+  const { data, error, mutate } = useSWR('/api/users', fetcher);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const resetForm = () => {
-    setFormData({ username: '', password: '', role: '', fullname: '' });
-    setEditingId(null);
-    setIsSubmitting(false);
-  };
+  // --- STATE FILTER ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const debouncedSearch = useDebounce(searchQuery, 500);
 
-  const handleEditClick = (user: any) => {
-    setFormData({ 
-        username: user.username, 
-        password: user.password, 
-        role: user.role, 
-        fullname: user.fullname 
+  // --- STATE CREATE FORM ---
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    role: 'Petugas',
+    fullname: ''
+  });
+
+  // --- 2. LOGIC FILTERING (CLIENT SIDE) ---
+  const filteredUsers = useMemo(() => {
+    if (!data?.data) return [];
+
+    return data.data.filter((user: any) => {
+      // Filter Role
+      const matchRole = roleFilter === 'ALL' || user.role === roleFilter;
+
+      // Filter Search (Cari di Username ATAU Fullname)
+      const query = debouncedSearch.toLowerCase();
+      const matchSearch = 
+        (user.username && user.username.toLowerCase().includes(query)) || 
+        (user.fullname && user.fullname.toLowerCase().includes(query));
+
+      return matchRole && matchSearch;
     });
-    setEditingId(user.username);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, [data, roleFilter, debouncedSearch]);
 
+  // --- HANDLE CREATE ---
   async function handleSubmit() {
-    if (!formData.username || !formData.password || !formData.role) {
-        return alert("Username, Password, dan Role wajib diisi");
+    if (!formData.username || !formData.password || !formData.fullname) {
+      alert("Mohon lengkapi data user");
+      return;
     }
-    
-    setIsSubmitting(true);
+
+    setIsLoading(true);
     try {
-      const method = editingId ? 'PUT' : 'POST';
-      // Jika edit, username dikirim di body untuk pencarian, tapi biasanya tidak diubah (primary key sederhana)
-      
       const res = await fetch('/api/users', {
-        method,
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error((await res.json()).error);
-
-      mutate();
-      resetForm();
-    } catch (error: any) {
-      alert("Gagal: " + error.message);
+      if (res.ok) {
+        setFormData({ username: '', password: '', role: 'Petugas', fullname: '' }); 
+        mutate(); // Refresh data
+        alert("User berhasil ditambahkan!");
+      } else {
+        const json = await res.json();
+        alert("Gagal: " + (json.error || "Unknown Error"));
+      }
+    } catch (err) {
+      console.error(err);
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   }
 
+  // --- HANDLE DELETE ---
   async function handleDelete(username: string) {
-    if (username === 'admin') return alert("User admin utama tidak boleh dihapus!");
-    if (!confirm(`Hapus user ${username}?`)) return;
+    if(!confirm(`Yakin ingin menghapus user ${username}?`)) return;
 
-    await fetch(`/api/users?username=${username}`, { method: 'DELETE' });
-    mutate();
-    if (editingId === username) resetForm();
+    try {
+        // Asumsi API delete support query param ?username=...
+        // Anda perlu memastikan backend route.ts menghandle DELETE
+        const res = await fetch(`/api/users?username=${username}`, { method: 'DELETE' });
+        if(res.ok) mutate();
+        else alert("Gagal menghapus user");
+    } catch (e) {
+        alert("Error koneksi");
+    }
   }
 
+  // Helper untuk warna badge role
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+        case 'Kepala Gudang': return 'bg-purple-100 text-purple-800 hover:bg-purple-200 border-purple-200';
+        case 'Manajerial': return 'bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200';
+        default: return 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-200'; // Petugas
+    }
+  }
+
+  // Reset Filter
+  const handleResetFilter = () => {
+    setSearchQuery('');
+    setRoleFilter('ALL');
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
-      <Navbar />
-      <div className="max-w-6xl mx-auto p-6 md:p-10 space-y-8">
+    <div className="min-h-screen bg-white p-6 md:p-10 font-sans">
+      <Navbar/>
+      <div className="max-w-6xl mx-auto space-y-8">
         
+        {/* HEADER */}
         <div>
-          <h1 className="text-3xl font-bold text-[#004aad]">Manajemen Pengguna</h1>
-          <p className="text-gray-500">Kelola akses Kepala Gudang, Manajerial, dan Petugas.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-[#004aad]">Manajemen Pengguna</h1>
+          <p className="text-muted-foreground">Kelola akun dan hak akses petugas gudang.</p>
         </div>
 
-        {/* FORM INPUT / EDIT */}
-        <Card className={`border-t-4 transition-colors ${editingId ? 'border-t-orange-500 bg-orange-50' : 'border-t-[#004aad]'}`}>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {editingId ? (
-                    <><Pencil className="w-5 h-5 text-orange-600"/> <span className="text-orange-700">Edit User: {editingId}</span></>
-                  ) : "Tambah User Baru"}
-                </CardTitle>
-                <CardDescription>Buat akun untuk staf atau manajer baru.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                    
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Username</label>
-                        <Input 
-                            placeholder="cth: petugas1" 
-                            value={formData.username}
-                            onChange={e => setFormData({...formData, username: e.target.value})}
-                            className="bg-white"
-                            disabled={!!editingId} // Username tidak boleh diganti saat edit
-                        />
-                    </div>
+        {/* --- FORM CREATE USER --- */}
+        <Card className="border-t-4 border-t-[#004aad] shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5"/> Tambah Pengguna Baru
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Username (Login)</Label>
+                <Input 
+                  placeholder="user123" 
+                  value={formData.username}
+                  onChange={(e) => setFormData({...formData, username: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <Input 
+                  type="password"
+                  placeholder="******" 
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Nama Lengkap</Label>
+                <Input 
+                  placeholder="Budi Santoso" 
+                  value={formData.fullname}
+                  onChange={(e) => setFormData({...formData, fullname: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Role / Jabatan</Label>
+                <Select 
+                  value={formData.role} 
+                  onValueChange={(val) => setFormData({...formData, role: val})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Petugas">Petugas Gudang</SelectItem>
+                    <SelectItem value="Kepala Gudang">Kepala Gudang</SelectItem>
+                    <SelectItem value="Manajerial">Manajerial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Password</label>
-                        <Input 
-                            type="text" // Plain text agar admin bisa lihat
-                            placeholder="Password..." 
-                            value={formData.password}
-                            onChange={e => setFormData({...formData, password: e.target.value})}
-                            className="bg-white"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Role (Jabatan)</label>
-                        <Select 
-                            value={formData.role} 
-                            onValueChange={(val) => setFormData({...formData, role: val})}
-                        >
-                            <SelectTrigger className="bg-white">
-                                <SelectValue placeholder="Pilih Role..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Kepala Gudang">Kepala Gudang (Admin)</SelectItem>
-                                <SelectItem value="Manajerial">Manajerial (Analytics Only)</SelectItem>
-                                <SelectItem value="Petugas">Petugas (Scanner Only)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Nama Lengkap</label>
-                        <Input 
-                            placeholder="cth: Budi Santoso" 
-                            value={formData.fullname}
-                            onChange={e => setFormData({...formData, fullname: e.target.value})}
-                            className="bg-white"
-                        />
-                    </div>
-                </div>
-
-                <div className="mt-6 flex justify-end gap-2">
-                      {editingId && (
-                        <Button variant="outline" onClick={resetForm} disabled={isSubmitting}><X className="w-4 h-4 mr-2"/> Batal</Button>
-                      )}
-                      <Button onClick={handleSubmit} disabled={isSubmitting} className={`min-w-[120px] ${editingId ? 'bg-orange-600 hover:bg-orange-700' : ''}`}>
-                          {isSubmitting ? '...' : (editingId ? <><Save className="w-4 h-4 mr-2"/> Simpan Perubahan</> : <><Plus className="w-4 h-4 mr-2"/> Tambah User</>)}
-                      </Button>
-                </div>
-            </CardContent>
+              <Button onClick={handleSubmit} disabled={isLoading} className="font-semibold bg-[#004aad]">
+                {isLoading ? 'Menyimpan...' : '+ Tambah User'}
+              </Button>
+            </div>
+          </CardContent>
         </Card>
 
-        {/* TABEL LIST */}
-        <Card>
-            <CardContent className="pt-6">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Username</TableHead>
-                            <TableHead>Nama Lengkap</TableHead>
-                            <TableHead>Role</TableHead>
-                            <TableHead>Password</TableHead>
-                            <TableHead className="text-right">Aksi</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {!data?.data ? (
-                            <TableRow><TableCell colSpan={5} className="text-center py-4">Memuat...</TableCell></TableRow>
-                        ) : data.data.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-center py-4 text-gray-400">Belum ada user</TableCell></TableRow>
-                        ) : (
-                          data.data.map((user: any) => (
-                            <TableRow key={user.username} className={editingId === user.username ? "bg-orange-50" : ""}>
-                                <TableCell className="font-bold font-mono text-[#004aad]">{user.username}</TableCell>
-                                <TableCell className="font-medium">{user.fullname}</TableCell>
-                                <TableCell>
-                                    <span className={`px-2 py-1 rounded text-xs font-bold 
-                                        ${user.role === 'Kepala Gudang' ? 'bg-blue-100 text-blue-700' : 
-                                          user.role === 'Manajerial' ? 'bg-purple-100 text-purple-700' : 
-                                          'bg-green-100 text-green-700'}`}>
-                                        {user.role}
-                                    </span>
-                                </TableCell>
-                                <TableCell className="text-gray-500 font-mono text-xs">
-                                    <div className="flex items-center gap-1">
-                                        <Key className="w-3 h-3"/> {user.password}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1">
-                                      <Button variant="ghost" size="sm" onClick={() => handleEditClick(user)} className="text-blue-600 hover:bg-blue-50">
-                                          <Pencil className="w-4 h-4"/>
-                                      </Button>
-                                      {user.username !== 'admin' && (
-                                        <Button variant="ghost" size="sm" onClick={() => handleDelete(user.username)} className="text-red-500 hover:bg-red-50">
-                                            <Trash2 className="w-4 h-4"/>
-                                        </Button>
-                                      )}
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                    </TableBody>
-                </Table>
-            </CardContent>
+        {/* --- FILTER SECTION (Requested Feature) --- */}
+        <div className="flex flex-col md:flex-row gap-4 items-end justify-between bg-gray-50 p-4 rounded-lg border">
+            {/* Kiri: Search & Role */}
+            <div className="flex flex-col md:flex-row gap-4 w-full md:w-3/4">
+                
+                {/* 1. Search */}
+                <div className="w-full md:w-1/2 space-y-2">
+                    <Label className="text-xs font-semibold text-gray-500 uppercase">Cari User</Label>
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                        <Input 
+                            placeholder="Ketik username atau nama..." 
+                            className="pl-9 bg-white"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                {/* 2. Filter Role */}
+                <div className="w-full md:w-1/3 space-y-2">
+                    <Label className="text-xs font-semibold text-gray-500 uppercase">Filter Role</Label>
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                        <SelectTrigger className="bg-white">
+                             <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4 text-gray-500"/>
+                                <SelectValue placeholder="Semua Role" />
+                             </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Semua Role</SelectItem>
+                            <SelectItem value="Petugas">Petugas Gudang</SelectItem>
+                            <SelectItem value="Kepala Gudang">Kepala Gudang</SelectItem>
+                            <SelectItem value="Manajerial">Manajerial</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {/* Kanan: Reset */}
+            {(searchQuery || roleFilter !== 'ALL') && (
+                <Button 
+                    variant="ghost" 
+                    onClick={handleResetFilter}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                >
+                    <X className="w-4 h-4 mr-2" /> Reset Filter
+                </Button>
+            )}
+        </div>
+
+        {/* --- TABLE USERS --- */}
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Daftar Pengguna</CardTitle>
+            <Badge variant="outline" className="ml-2">
+                Total: {filteredUsers.length} User
+            </Badge>
+          </CardHeader>
+          <CardContent>
+            {!data ? (
+              <div className="text-center py-10 text-gray-500">Memuat data user...</div>
+            ) : error ? (
+              <div className="text-center py-10 text-red-500">Gagal mengambil data.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Username</TableHead>
+                    <TableHead>Nama Lengkap</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.length === 0 ? (
+                    <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-gray-400">
+                            Tidak ada user yang cocok.
+                        </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredUsers.map((user: any) => (
+                    <TableRow key={user.username}>
+                      <TableCell className="font-mono font-medium">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                                <User className="w-4 h-4"/>
+                            </div>
+                            {user.username}
+                        </div>
+                      </TableCell>
+                      <TableCell>{user.fullname}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`${getRoleBadgeColor(user.role)} px-3 py-1`}>
+                            {user.role === 'Kepala Gudang' && <Shield className="w-3 h-3 mr-1 inline"/>}
+                            {user.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDelete(user.username)}
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                        >
+                            <Trash2 className="w-4 h-4"/>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
         </Card>
 
       </div>
