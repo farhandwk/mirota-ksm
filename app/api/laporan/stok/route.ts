@@ -1,103 +1,46 @@
 import { NextResponse } from 'next/server';
-import { doc, loadSpreadsheet } from '../../../../lib/googleSheets'; // Pastikan path import ini sesuai struktur folder Anda
+import { doc, loadSpreadsheet } from '../../../../lib/googleSheets';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    // 1. Ambil Parameter Tanggal dari URL
-    const { searchParams } = new URL(request.url);
-    const startDateParam = searchParams.get('startDate');
-    const endDateParam = searchParams.get('endDate');
-
-    if (!startDateParam || !endDateParam) {
-      return NextResponse.json(
-        { message: 'Tanggal awal dan akhir wajib diisi' },
-        { status: 400 }
-      );
-    }
-
-    // Konversi string input (YYYY-MM-DD) ke Object Date
-    const startDate = new Date(`${startDateParam}T00:00:00`);
-    const endDate = new Date(`${endDateParam}T23:59:59`);
-
-    // 2. Load Spreadsheet
+    // 1. Load Spreadsheet
     await loadSpreadsheet();
-    
     const sheetProduk = doc.sheetsByTitle['produk'];
-    const sheetTransaksi = doc.sheetsByTitle['transaksi'];
 
-    if (!sheetProduk || !sheetTransaksi) {
-      throw new Error("Sheet 'produk' atau 'transaksi' tidak ditemukan!");
+    if (!sheetProduk) {
+      throw new Error("Sheet 'produk' tidak ditemukan!");
     }
 
-    // Ambil semua baris data
-    const rowsProduk = await sheetProduk.getRows();
-    const rowsTransaksi = await sheetTransaksi.getRows();
+    // 2. Ambil semua baris data produk
+    const rows = await sheetProduk.getRows();
 
-    // 3. Grouping Transaksi berdasarkan Kode Produk (Optimasi)
-    const transaksiMap: Record<string, any[]> = {};
-
-    rowsTransaksi.forEach((row) => {
-      const kode = row.get('kode_qr_produk');
-      if (!transaksiMap[kode]) transaksiMap[kode] = [];
+    // 3. Format Data untuk Frontend
+    const dataProduk = rows.map((row) => {
+      // PERBAIKAN DI SINI:
+      // Coba ambil 'stok' (Indo), jika tidak ada coba 'stock' (Inggris), jika tidak ada return '0'
+      const rawStock = row.get('stok') || row.get('stock') || '0';
       
-      // Ambil tanggal dan qty dengan aman
-      const rawDate = row.get('tanggal');
-      const qty = parseInt(row.get('qty') || '0', 10);
-      
-      transaksiMap[kode].push({
-        tanggal: rawDate, 
-        tipe: row.get('tipe'), // IN atau OUT
-        qty: isNaN(qty) ? 0 : qty
-      });
-    });
-
-    // 4. Hitung Laporan (Murni berdasarkan Transaksi di Range Tanggal)
-    const laporan = rowsProduk.map((prod) => {
-      const kodeQR = prod.get('kode_qr');
-      const namaProduk = prod.get('nama_produk');
-      
-      // Ambil riwayat transaksi produk ini
-      const history = transaksiMap[kodeQR] || [];
-
-      let masukPeriode = 0;
-      let keluarPeriode = 0;
-
-      history.forEach((t) => {
-        // Parsing tanggal transaksi
-        // Asumsi format di sheet adalah ISO String (misal: 2025-12-18T14:30:00.000Z)
-        // Jika format di sheet berbeda, logic parsing ini harus disesuaikan
-        const tglTransaksi = new Date(t.tanggal);
-        
-        // Filter: Apakah transaksi terjadi di antara Start dan End Date?
-        if (tglTransaksi >= startDate && tglTransaksi <= endDate) {
-          if (t.tipe === 'IN') {
-            masukPeriode += t.qty;
-          } else if (t.tipe === 'OUT') {
-            keluarPeriode += t.qty;
-          }
-        }
-      });
-
-      // --- LOGIKA UTAMA DIUBAH DISINI ---
-      // Tidak lagi mengambil stok dari master produk.
-      // Stok Sistem = (Total Masuk di range ini) - (Total Keluar di range ini)
-      const stokHitunganMurni = masukPeriode - keluarPeriode;
+      // Coba ambil 'departemen' atau 'department_id'
+      const rawDept = row.get('departemen') || row.get('department_id') || '-';
 
       return {
-        kode_qr: kodeQR,
-        nama_produk: namaProduk,
-        stok_saat_ini: stokHitunganMurni, // Nilai ini yang akan muncul di kolom "Stok Sistem"
-        masuk: masukPeriode,
-        keluar: keluarPeriode,
+        id: row.get('id'), 
+        kode_qr: row.get('kode_qr'),
+        nama_produk: row.get('nama_produk'),
+        stok_saat_ini: parseInt(rawStock, 10), // Parsing angka yang benar
+        departemen: rawDept
       };
     });
 
-    return NextResponse.json({ data: laporan });
+    return NextResponse.json({ 
+        success: true, 
+        data: dataProduk 
+    });
 
   } catch (error: any) {
-    console.error("Error Laporan:", error);
+    console.error("Error API Stok:", error);
     return NextResponse.json(
-      { message: 'Gagal memuat laporan', error: error.message },
+      { message: 'Gagal memuat data produk', error: error.message },
       { status: 500 }
     );
   }

@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { Download, Loader2, AlertCircle, Filter, Calendar, ArrowUpDown, X } from "lucide-react"; 
+import { Download, Loader2, AlertCircle, XCircle, CheckCircle, Lock, X, Trash2 } from "lucide-react"; 
 import { Button } from "../../../components/ui/button"; 
 import { Card, CardContent } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
-import { 
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
-} from "../../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import Navbar  from '../../../components/Navbar'
@@ -22,123 +20,126 @@ interface RiwayatItem {
   stok_sistem: number;
   stok_fisik: number;
   selisih: number;
-  status: string; // 'COCOK' | 'LEBIH' | 'KURANG'
+  status: string; 
 }
 
 export default function HalamanRiwayatOpname() {
   const [rawData, setRawData] = useState<RiwayatItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null); // Ganti nama state agar general
 
-  // --- STATE FILTER ---
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL, COCOK, LEBIH, KURANG
-  const [sortOrder, setSortOrder] = useState("newest"); // newest, oldest
+  const [statusFilter, setStatusFilter] = useState("ALL"); 
+  const [sortOrder, setSortOrder] = useState("newest"); 
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const res = await fetch("/api/laporan/riwayat");
-        if (!res.ok) throw new Error("Gagal terhubung ke server");
-        const data = await res.json();
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/laporan/riwayat");
+      if (!res.ok) throw new Error("Gagal");
+      const data = await res.json();
+      setRawData(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      setRawData([]); 
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (Array.isArray(data)) {
-          setRawData(data);
+  useEffect(() => { fetchData(); }, []);
+
+  // --- ACTION: APPROVE ---
+  const handleApprove = async (item: RiwayatItem) => {
+    const confirmMsg = `KONFIRMASI APPROVAL:\n\nProduk: ${item.nama_produk}\nStok Master akan diubah dari ${item.stok_sistem} menjadi ${item.stok_fisik}.\n\nLanjutkan?`;
+    if(!confirm(confirmMsg)) return;
+
+    setProcessingId(item.id_opname); 
+    try {
+        const res = await fetch('/api/laporan/approve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                id_opname: item.id_opname,
+                kode_qr: item.kode_qr,
+                stok_baru: item.stok_fisik
+            })
+        });
+        if(res.ok) {
+            alert("Berhasil disetujui! Stok master terupdate.");
+            fetchData(); 
         } else {
-          console.error("Format data salah:", data);
-          setRawData([]); 
+            alert("Gagal memproses.");
         }
-      } catch (error) {
-        console.error("Fetch error:", error);
-        setErrorMsg("Terjadi kesalahan saat mengambil data.");
-        setRawData([]); 
-      } finally {
-        setLoading(false);
-      }
-    };
+    } catch (e) { alert("Error koneksi."); } 
+    finally { setProcessingId(null); }
+  };
 
-    fetchData();
-  }, []);
+  // --- ACTION: REJECT (BARU) ---
+  const handleReject = async (item: RiwayatItem) => {
+    // Pesan konfirmasi yang lebih keras karena sifatnya destruktif (menghapus)
+    const confirmMsg = `HAPUS PERMINTAAN?\n\nAnda menolak hasil opname: ${item.nama_produk}.\nData laporan ini akan DIHAPUS PERMANEN dari riwayat.\nStok Master tidak akan berubah.\n\nLanjutkan menghapus?`;
+    
+    if(!confirm(confirmMsg)) return;
 
-  // --- LOGIKA FILTERING & GROUPING ---
+    setProcessingId(item.id_opname);
+    
+    try {
+        const res = await fetch('/api/laporan/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id_opname: item.id_opname })
+        });
+
+        const json = await res.json();
+
+        if(res.ok) {
+            alert("Laporan berhasil dihapus.");
+            fetchData(); // Refresh tabel agar baris yang dihapus hilang
+        } else {
+            alert(`Gagal menghapus: ${json.message}`);
+        }
+    } catch (e) { 
+        alert("Error koneksi."); 
+    } finally { 
+        setProcessingId(null); 
+    }
+  };
+
+  // --- FILTERING ---
   const processedData = useMemo(() => {
-    if (!rawData || rawData.length === 0) return [];
+    if (!rawData) return [];
+    let results = [...rawData];
 
-    // 1. Grouping Data (Gabungkan jika ada QR sama di tanggal sama)
-    const groupedMap = new Map<string, RiwayatItem>();
+    if (startDate) results = results.filter((item) => item.tanggal >= startDate);
+    if (endDate) results = results.filter((item) => item.tanggal <= endDate);
 
-    rawData.forEach((item) => {
-      const tgl = item.tanggal || "UNKNOWN-DATE";
-      const qr = item.kode_qr || "UNKNOWN-QR";
-      const key = `${tgl}_${qr}`;
-
-      if (groupedMap.has(key)) {
-        const existing = groupedMap.get(key)!;
-        existing.stok_sistem += (item.stok_sistem || 0);
-        existing.stok_fisik += (item.stok_fisik || 0);
-        existing.selisih += (item.selisih || 0);
-        // Recalculate status
-        existing.status = existing.selisih === 0 ? "COCOK" : (existing.selisih < 0 ? "KURANG" : "LEBIH");
-      } else {
-        // Kalkulasi status awal
-        const status = item.selisih === 0 ? "COCOK" : (item.selisih < 0 ? "KURANG" : "LEBIH");
-        groupedMap.set(key, { ...item, status });
-      }
-    });
-
-    let results = Array.from(groupedMap.values());
-
-    // 2. Filter Range Tanggal
-    if (startDate) {
-      results = results.filter((item) => item.tanggal >= startDate);
-    }
-    if (endDate) {
-      results = results.filter((item) => item.tanggal <= endDate);
-    }
-
-    // 3. Filter Status (Tipe)
     if (statusFilter !== "ALL") {
-        results = results.filter((item) => item.status === statusFilter);
+        if (statusFilter === "PENDING") results = results.filter((item) => item.status.includes("PENDING"));
+        else if (statusFilter === "APPROVED") results = results.filter((item) => item.status.includes("APPROVED"));
+        else if (statusFilter === "REJECTED") results = results.filter((item) => item.status.includes("REJECTED"));
+        else results = results.filter((item) => item.status.includes(statusFilter));
     }
 
-    // 4. Sorting
     results.sort((a, b) => {
         const dateA = new Date(a.tanggal || 0).getTime();
         const dateB = new Date(b.tanggal || 0).getTime();
         return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
     });
-
     return results;
   }, [rawData, startDate, endDate, statusFilter, sortOrder]);
 
+  // --- EXPORT ---
   const handleExport = () => {
-    if (processedData.length === 0) return;
-
-    const dataToExport = processedData.map((item) => ({
-      "Tanggal": item.tanggal,
-      "Kode QR": item.kode_qr,
-      "Nama Produk": item.nama_produk,
-      "Stok Sistem": item.stok_sistem,
-      "Stok Fisik": item.stok_fisik,
-      "Selisih": item.selisih,
-      "Status": item.status
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const ws = XLSX.utils.json_to_sheet(processedData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Riwayat Opname");
-    const fileName = `Laporan_Opname_${startDate || "All"}_${endDate || "All"}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    XLSX.utils.book_append_sheet(wb, ws, "Riwayat");
+    XLSX.writeFile(wb, `Opname_Export.xlsx`);
   };
 
   const handleResetFilter = () => {
-      setStartDate("");
-      setEndDate("");
-      setStatusFilter("ALL");
-      setSortOrder("newest");
+      setStartDate(""); setEndDate(""); setStatusFilter("ALL"); setSortOrder("newest");
   };
 
   return (
@@ -146,98 +147,60 @@ export default function HalamanRiwayatOpname() {
       <Navbar />
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-[#004aad]">Riwayat Stock Opname</h1>
-            <p className="text-muted-foreground">Arsip laporan perhitungan fisik stok gudang.</p>
+            <h1 className="text-3xl font-bold text-[#004aad]">Riwayat Stock Opname</h1>
+            <p className="text-muted-foreground">Monitor persetujuan selisih stok.</p>
           </div>
-          
-          <Button 
-            onClick={handleExport} 
-            disabled={loading || processedData.length === 0} 
-            className="bg-green-600 hover:bg-green-700 text-white gap-2"
-          >
+          <Button onClick={handleExport} disabled={loading} className="bg-green-600 hover:bg-green-700 text-white gap-2">
             <Download size={16} /> Export Excel
           </Button>
         </div>
 
-        {/* --- SECTION FILTER BARU --- */}
         <Card className="bg-gray-50 border shadow-sm">
             <CardContent className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                    
-                    {/* 1. Sort Order */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-gray-500">Urutkan Tanggal</Label>
+                        <Label className="text-xs font-semibold text-gray-500">Urutkan</Label>
                         <Select value={sortOrder} onValueChange={setSortOrder}>
-                            <SelectTrigger className="bg-white">
-                                <ArrowUpDown className="w-4 h-4 mr-2 text-gray-400"/>
-                                <SelectValue placeholder="Urutan" />
-                            </SelectTrigger>
+                            <SelectTrigger className="bg-white"><SelectValue/></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="newest">Paling Baru</SelectItem>
                                 <SelectItem value="oldest">Paling Lama</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-
-                    {/* 2. Filter Status / Tipe */}
                     <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-gray-500">Status Opname</Label>
+                        <Label className="text-xs font-semibold text-gray-500">Status</Label>
                         <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="bg-white">
-                                <Filter className="w-4 h-4 mr-2 text-gray-400"/>
-                                <SelectValue placeholder="Semua Status" />
-                            </SelectTrigger>
+                            <SelectTrigger className="bg-white"><SelectValue/></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="ALL">Semua Status</SelectItem>
-                                <SelectItem value="COCOK">Cocok (Selisih 0)</SelectItem>
-                                <SelectItem value="KURANG">Kurang (Minus)</SelectItem>
-                                <SelectItem value="LEBIH">Lebih (Plus)</SelectItem>
+                                <SelectItem value="ALL">Semua</SelectItem>
+                                <SelectItem value="PENDING">⚠️ Menunggu Approval</SelectItem>
+                                <SelectItem value="APPROVED">✅ Disetujui</SelectItem>
+                                <SelectItem value="REJECTED">❌ Ditolak</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-
-                    {/* 3. Range Tanggal */}
                     <div className="space-y-2 lg:col-span-2">
-                        <Label className="text-xs font-semibold text-gray-500">Rentang Tanggal</Label>
+                        <Label className="text-xs font-semibold text-gray-500">Tanggal</Label>
                         <div className="flex gap-2 items-center">
-                            <div className="relative w-full">
-                                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                                <Input 
-                                    type="date" 
-                                    className="pl-9 bg-white"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                />
-                            </div>
+                            <Input type="date" className="bg-white" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                             <span className="text-gray-400">-</span>
-                            <div className="relative w-full">
-                                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                                <Input 
-                                    type="date" 
-                                    className="pl-9 bg-white"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                />
-                            </div>
+                            <Input type="date" className="bg-white" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                         </div>
                     </div>
                 </div>
-
-                {/* Tombol Reset Filter */}
-                {(startDate || endDate || statusFilter !== "ALL" || sortOrder !== "newest") && (
-                     <div className="mt-4 flex justify-end">
-                        <Button variant="ghost" size="sm" onClick={handleResetFilter} className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                            <X className="w-4 h-4 mr-2"/> Hapus Filter
+                {(startDate || endDate || statusFilter !== "ALL") && (
+                      <div className="mt-4 flex justify-end">
+                        <Button variant="ghost" size="sm" onClick={handleResetFilter} className="text-red-500 hover:bg-red-50">
+                            <X className="w-4 h-4 mr-2"/> Reset
                         </Button>
-                     </div>
+                      </div>
                 )}
             </CardContent>
         </Card>
 
-        {/* TABEL DATA */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -245,75 +208,84 @@ export default function HalamanRiwayatOpname() {
                 <tr>
                   <th className="px-6 py-3">Tanggal</th>
                   <th className="px-6 py-3">Produk</th>
-                  <th className="px-6 py-3 text-right">Sistem</th>
-                  <th className="px-6 py-3 text-right">Fisik</th>
-                  <th className="px-6 py-3 text-right">Selisih</th>
+                  <th className="px-6 py-3 text-center">Sistem</th>
+                  <th className="px-6 py-3 text-center">Fisik</th>
+                  <th className="px-6 py-3 text-center">Selisih</th>
                   <th className="px-6 py-3 text-center">Status</th>
+                  <th className="px-6 py-3 text-center w-48">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {loading && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
-                      <div className="flex justify-center items-center gap-2 text-gray-500">
-                        <Loader2 className="animate-spin" /> Sedang mengambil data...
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                {loading && <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500"><Loader2 className="animate-spin inline mr-2"/> Loading...</td></tr>}
+                
+                {!loading && processedData.map((row, idx) => {
+                    const isPending = row.status.includes('PENDING');
+                    const isApproved = row.status.includes('APPROVED');
+                    const isRejected = row.status.includes('REJECTED');
+                    
+                    return (
+                        <tr key={idx} className={`hover:bg-gray-50 transition-colors ${isPending ? 'bg-yellow-50/30' : isRejected ? 'bg-gray-100 opacity-70' : ''}`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                             {row.tanggal ? format(new Date(row.tanggal), "dd MMM HH:mm", { locale: id }) : "-"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-gray-900">{row.nama_produk}</div>
+                            <div className="text-xs text-gray-400 font-mono mt-0.5">{row.kode_qr}</div>
+                          </td>
+                          <td className="px-6 py-4 text-center text-gray-600">{row.stok_sistem}</td>
+                          <td className="px-6 py-4 text-center font-bold text-gray-900">{row.stok_fisik}</td>
+                          
+                          <td className={`px-6 py-4 text-center font-bold ${row.selisih < 0 ? "text-red-600" : row.selisih > 0 ? "text-blue-600" : "text-gray-400"}`}>
+                            {row.selisih > 0 ? "+" : ""}{row.selisih}
+                          </td>
 
-                {!loading && errorMsg && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-red-500 bg-red-50">
-                      <div className="flex justify-center items-center gap-2">
-                         <AlertCircle size={18}/> {errorMsg}
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                          <td className="px-6 py-4 text-center">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center justify-center gap-1 w-fit mx-auto ${
+                                  isPending ? "bg-yellow-100 text-yellow-700 border-yellow-200" : 
+                                  isApproved ? "bg-green-100 text-green-700 border-green-200" :
+                                  isRejected ? "bg-red-100 text-red-700 border-red-200" :
+                                  "bg-gray-100 text-gray-600"
+                              }`}>
+                                  {isPending && <AlertCircle size={12}/>}
+                                  {isApproved && <CheckCircle size={12}/>}
+                                  {isRejected && <XCircle size={12}/>}
+                                  {isPending ? "PENDING" : isApproved ? "APPROVED" : isRejected ? "DITOLAK" : row.status}
+                              </span>
+                          </td>
 
-                {!loading && !errorMsg && processedData.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                      <p className="font-medium">Tidak ada data riwayat.</p>
-                      <p className="text-xs mt-1">Coba sesuaikan filter tanggal atau status Anda.</p>
-                    </td>
-                  </tr>
-                )}
+                          {/* KOLOM AKSI DENGAN DUA TOMBOL */}
+                          <td className="px-6 py-4 text-center">
+                              {isPending ? (
+                                  <div className="flex gap-2 justify-center">
+                                      {/* Tombol Reject */}
+                                      <Button 
+                                        variant="outline"
+                                        size="sm" 
+                                        disabled={processingId === row.id_opname}
+                                        className="text-red-600 border-red-200 hover:bg-red-50 h-8 px-3"
+                                        onClick={() => handleReject(row)}
+                                        title="Tolak & Hapus Laporan"
+                                      ><Trash2/></Button>
 
-                {!loading && !errorMsg && processedData.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                         {row.tanggal && !isNaN(Date.parse(row.tanggal)) 
-                           ? format(new Date(row.tanggal), "dd MMM yyyy", { locale: id }) 
-                           : row.tanggal}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{row.nama_produk}</div>
-                        <div className="text-xs text-gray-400 font-mono mt-0.5">{row.kode_qr}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-600">{row.stok_sistem}</td>
-                      <td className="px-6 py-4 text-right font-bold text-gray-900">{row.stok_fisik}</td>
-                      
-                      {/* Kolom Selisih Warna-warni */}
-                      <td className={`px-6 py-4 text-right font-bold ${
-                        row.selisih < 0 ? "text-red-600" : row.selisih > 0 ? "text-blue-600" : "text-gray-400"
-                      }`}>
-                        {row.selisih > 0 ? "+" : ""}{row.selisih}
-                      </td>
-
-                      {/* Kolom Status Badge */}
-                      <td className="px-6 py-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                              row.status === "COCOK" ? "bg-green-100 text-green-700 border-green-200" : 
-                              row.status === "KURANG" ? "bg-red-100 text-red-700 border-red-200" :
-                              "bg-blue-100 text-blue-700 border-blue-200"
-                          }`}>
-                              {row.status}
-                          </span>
-                      </td>
-                    </tr>
-                ))}
+                                      {/* Tombol Approve */}
+                                      <Button 
+                                        size="sm" 
+                                        disabled={processingId === row.id_opname}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3"
+                                        onClick={() => handleApprove(row)}
+                                      >
+                                        {processingId === row.id_opname ? <Loader2 className="animate-spin w-3 h-3"/> : "Setujui"}
+                                      </Button>
+                                  </div>
+                              ) : (
+                                  <span className="text-xs text-gray-400 flex items-center justify-center gap-1">
+                                    <Lock size={12}/> Selesai
+                                  </span>
+                              )}
+                          </td>
+                        </tr>
+                    );
+                })}
               </tbody>
             </table>
           </div>
