@@ -10,37 +10,41 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../..
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { AlertTriangle, TrendingUp, Package, Building2 } from "lucide-react";
+import { AlertTriangle, TrendingUp, Package, Building2, LogOut, Loader2 } from "lucide-react";
 import StockTrendChart from '../../components/StockTrendChart';
+import WarehouseCompositionChart from '../../components/WarehouseCompositionChart'; // Import komponen
 import { signOut } from "next-auth/react"; 
-import { LogOut } from "lucide-react";
 
-// Fetcher
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// Warna Chart (Biru Mirota & Variasinya)
 const COLORS = ['#004aad', '#0078d4', '#429ce3', '#8ac5ff', '#FF8042'];
 
 export default function AnalyticsPage() {
-  // Ambil data Produk & Transaksi sekaligus
-  const { data: productsData } = useSWR('/api/products', fetcher);
-  const { data: transactionsData } = useSWR('/api/transactions', fetcher);
+  // 1. Ambil state isLoading dari SWR
+  const { data: productsData, isLoading: loadingProducts } = useSWR('/api/products', fetcher);
+  const { data: transactionsData, isLoading: loadingTrx } = useSWR('/api/transactions', fetcher);
+  const { data: deptsData, isLoading: loadingDepts } = useSWR('/api/departments', fetcher);
 
-  // --- DATA PROCESSING LOGIC ---
-  
-  if (!productsData || !transactionsData) {
-    return <div className="p-10 text-center text-gray-500">Sedang menghitung analitik...</div>;
+  // 2. Tampilkan Loader Full Screen jika data masih diambil
+  if (loadingProducts || loadingTrx || loadingDepts) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500 gap-2">
+            <Loader2 className="w-8 h-8 animate-spin text-[#004aad]" />
+            <p>Sedang menyiapkan dashboard...</p>
+        </div>
+    );
   }
 
+  // 3. Olah Data (Hanya jalan jika loading selesai)
   const products = productsData?.data || [];
   const transactions = transactionsData?.data || [];
-  
-  // 1. KPI Calculation
+  const departments = deptsData?.data || [];
+
+  // --- KPI LOGIC ---
   const totalItems = products.length;
   const totalStockQty = products.reduce((acc: number, item: any) => acc + item.stock, 0);
-  const lowStockItems = products.filter((item: any) => item.stock < 10); // Stok di bawah 10 dianggap kritis
+  const lowStockItems = products.filter((item: any) => item.stock < 10);
 
-  // 2. Group by Department (Untuk Bar Chart)
   const deptStats: Record<string, number> = {};
   products.forEach((item: any) => {
     const dept = item.department_id || 'Unknown';
@@ -52,7 +56,6 @@ export default function AnalyticsPage() {
     total: deptStats[key]
   }));
 
-  // 3. Low Stock List (Insight Actionable)
   const criticalStockList = lowStockItems.sort((a: any, b: any) => a.stock - b.stock).slice(0, 5);
 
   return (
@@ -66,7 +69,6 @@ export default function AnalyticsPage() {
                 <p className="text-gray-500">Pantau performa gudang secara real-time.</p>
             </div>
             
-            {/* Tombol Logout Manual (Hanya muncul jika Navbar tidak ada/Manager) */}
             <Button 
                 variant="outline" 
                 className="text-red-600 border-red-200 hover:bg-red-50"
@@ -74,12 +76,6 @@ export default function AnalyticsPage() {
             >
                 <LogOut className="w-4 h-4 mr-2" /> Keluar
             </Button>
-        </div>
-        
-        {/* HEADER */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-[#004aad]">Executive Dashboard</h1>
-          <p className="text-muted-foreground">Ringkasan performa inventaris dan peringatan dini.</p>
         </div>
 
         {/* --- SECTION 1: KPI CARDS --- */}
@@ -125,37 +121,18 @@ export default function AnalyticsPage() {
           </Card>
         </div>
 
-        <StockTrendChart 
-               products={products} 
-               transactions={transactions} 
+        {/* --- SECTION 2: STOCK TREND CHART --- */}
+        <div className="w-full">
+            <StockTrendChart 
+                products={products} 
+                transactions={transactions} 
+                departments={departments}
             />
+        </div>
 
-        {/* --- SECTION 2: CHARTS --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Chart 1: Distribusi Stok per Dept */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Distribusi Stok per Departemen</CardTitle>
-              <CardDescription>Divisi mana yang menyimpan barang terbanyak?</CardDescription>
-            </CardHeader>
-            <CardContent className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barChartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    cursor={{ fill: '#f3f4f6' }}
-                  />
-                  <Bar dataKey="total" fill="#004aad" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Chart 2: Top 5 Barang Menipis (Tabel Insight) */}
+      {/* --- SECTION 4: TABLE INSIGHT --- */}
+        <div className="">
+          {/* Tabel Low Stock */}
           <Card>
             <CardHeader>
               <CardTitle className="text-red-600 flex items-center gap-2">
@@ -175,18 +152,18 @@ export default function AnalyticsPage() {
                 </TableHeader>
                 <TableBody>
                   {criticalStockList.length === 0 ? (
-                     <TableRow>
-                       <TableCell colSpan={3} className="text-center text-green-600 py-8">
-                         Semua stok aman! Tidak ada yang kritis.
-                       </TableCell>
-                     </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-green-600 py-8">
+                          Semua stok aman! Tidak ada yang kritis.
+                        </TableCell>
+                      </TableRow>
                   ) : (
                     criticalStockList.map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell><Badge variant="outline">{item.department_id}</Badge></TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="destructive">{item.stock} {item.unit}</Badge>
+                          <Badge variant="destructive">{item.stock} Unit</Badge>
                         </TableCell>
                       </TableRow>
                     ))
@@ -195,37 +172,17 @@ export default function AnalyticsPage() {
               </Table>
             </CardContent>
           </Card>
-
         </div>
 
-        {/* --- SECTION 3: PIE CHART COMPOSITION --- */}
-        <Card>
-            <CardHeader>
-              <CardTitle>Komposisi Gudang</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={barChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    paddingAngle={5}
-                    dataKey="total"
-                  >
-                    {barChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-        </Card>
+        {/* --- SECTION 3: WAREHOUSE COMPOSITION (FIXED) --- */}
+        <div className="w-full">
+             <WarehouseCompositionChart 
+                products={products} 
+                departments={departments} 
+             />
+        </div>
+
+        
 
       </div>
     </div>
