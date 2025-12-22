@@ -15,12 +15,12 @@ import { cn } from "../lib/utils"; // Jika tidak punya utility cn, bisa pakai st
 
 // Definisi Menu Item supaya kodingan rapi
 const menuItems = [
+  { href: '/analytics', label: 'Analytics', icon: ChartPie },
   { href: '/inventory', label: 'Stok', icon: Package },
   { href: '/history', label: 'Riwayat', icon: History },
   { href: '/gudang', label: 'Gudang', icon: Warehouse },
   { href: '/units', label: 'Satuan', icon: Scale },
   { href: '/users', label: 'Pengguna', icon: Users },
-  { href: '/analytics', label: 'Analytics', icon: ChartPie },
   { href: '/laporan', label: 'Stok Opname', icon: ClipboardList },
   { href: '/laporan/riwayat', label: 'Riwayat Opname', icon: ClipboardList },
 ];

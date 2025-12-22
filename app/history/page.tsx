@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import useSWR from 'swr';
+import * as XLSX from 'xlsx'; // 1. IMPORT XLSX
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from "../../components/ui/table";
@@ -16,31 +17,29 @@ import {
 import { format } from 'date-fns'; 
 import { id } from 'date-fns/locale'; 
 import Navbar from "../../components/Navbar"
-import { Filter, X, ArrowUpDown, Calendar } from "lucide-react"; 
+import { Filter, X, ArrowUpDown, Calendar, Download } from "lucide-react"; // 2. TAMBAH ICON DOWNLOAD
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function HistoryPage() {
-  // 1. Fetch Data Transaksi, User (untuk Role), dan Dept (untuk Filter)
+  // 1. Fetch Data
   const { data: trxData, error } = useSWR('/api/transactions', fetcher);
   const { data: usersData } = useSWR('/api/users', fetcher);
   const { data: deptData } = useSWR('/api/departments', fetcher);
 
-  // 2. State untuk Filter
+  // 2. State Filter
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // 3. Logic: Memformat "Oleh" (Role + Nama)
+  // 3. Logic UI: Format "Oleh" (Role + Nama) untuk Tabel
   const getUserLabel = (picName: string) => {
     if (!usersData?.data) return picName;
-    // Asumsi: log.pic menyimpan username/nama yang cocok dengan user.username atau user.name
     const foundUser = usersData.data.find((u: any) => u.name === picName || u.username === picName);
     
     if (foundUser) {
-      // Format: "{Role} {Nama}" -> Contoh: "Petugas Budi"
       return (
         <span className="flex flex-col">
             <span className="font-semibold text-gray-900">{foundUser.name}</span>
@@ -48,36 +47,29 @@ export default function HistoryPage() {
         </span>
       );
     }
-    return picName; // Fallback jika user tidak ditemukan (mungkin user lama yg sudah dihapus)
+    return picName;
   };
 
-  // 4. Logic: Filtering & Sorting (Client Side)
+  // 4. Logic Filtering (Client Side)
   const filteredData = useMemo(() => {
     if (!trxData?.data) return [];
 
     let result = [...trxData.data];
 
-    // Filter Tipe (IN/OUT)
     if (typeFilter !== 'ALL') {
       result = result.filter((item) => item.type === typeFilter);
     }
-
-    // Filter Departemen
     if (deptFilter !== 'ALL') {
       result = result.filter((item) => item.dept_id === deptFilter);
     }
-
-    // Filter Range Tanggal
     if (startDate) {
       result = result.filter((item) => new Date(item.date) >= new Date(startDate));
     }
     if (endDate) {
-      // Tambah jam 23:59 agar mencakup seluruh hari terakhir
       const endDateTime = new Date(`${endDate}T23:59:59`);
       result = result.filter((item) => new Date(item.date) <= endDateTime);
     }
 
-    // Sorting (Newest / Oldest)
     result.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
@@ -94,6 +86,49 @@ export default function HistoryPage() {
     } catch (e) {
       return dateString; 
     }
+  };
+
+  // --- 5. LOGIC EXPORT EXCEL (BARU) ---
+  const handleExport = () => {
+    if (filteredData.length === 0) {
+        alert("Tidak ada data untuk diekspor");
+        return;
+    }
+
+    // Mapping data agar rapi di Excel
+    const excelData = filteredData.map((row) => {
+        // Cari nama lengkap User untuk report Excel
+        let picName = row.pic;
+        if (usersData?.data) {
+            const foundUser = usersData.data.find((u: any) => u.name === row.pic || u.username === row.pic);
+            if (foundUser) picName = `${foundUser.name} (${foundUser.role})`;
+        }
+
+        return {
+            "Tanggal Waktu": formatDate(row.date),
+            "Tipe": row.type,
+            "Kode QR Produk": row.qr_code_produk || row.qr_code,
+            "Jumlah": row.type === 'IN' ? `+${row.qty}` : `-${row.qty}`,
+            "PIC (Petugas)": picName,
+            "Departemen": row.dept_id
+        };
+    });
+
+    // Buat Workbook SheetJS
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan Transaksi");
+
+    // Generate Nama File (misal: Laporan_2023-10-01_s.d_2023-10-31.xlsx)
+    let fileName = "Laporan_Transaksi";
+    if (startDate && endDate) {
+        fileName += `_${startDate}_sd_${endDate}`;
+    } else {
+        fileName += `_${new Date().toISOString().split('T')[0]}`;
+    }
+    
+    // Download File
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
   };
 
   // Reset Filter
@@ -116,10 +151,22 @@ export default function HistoryPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-[#004aad]">Riwayat Transaksi</h1>
                 <p className="text-muted-foreground">Log aktivitas keluar masuk barang di gudang.</p>
             </div>
-            {/* Badge Total Data */}
-            <Badge variant="secondary" className="px-4 py-1 text-sm">
-                Total Data: {filteredData.length}
-            </Badge>
+            
+            <div className="flex items-center gap-2">
+                {/* Badge Total Data */}
+                <Badge variant="secondary" className="px-4 py-2 text-sm h-10">
+                    Total: {filteredData.length} Data
+                </Badge>
+
+                {/* --- TOMBOL EXPORT (BARU) --- */}
+                <Button 
+                    onClick={handleExport}
+                    className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                    disabled={!trxData || filteredData.length === 0}
+                >
+                    <Download className="w-4 h-4" /> Export Excel
+                </Button>
+            </div>
         </div>
 
         {/* --- SECTION FILTER --- */}
@@ -127,7 +174,7 @@ export default function HistoryPage() {
             <CardContent className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                     
-                    {/* 1. Sort Order */}
+                    {/* Sort Order */}
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold text-gray-500">Urutkan</Label>
                         <Select value={sortOrder} onValueChange={(val: any) => setSortOrder(val)}>
@@ -142,7 +189,7 @@ export default function HistoryPage() {
                         </Select>
                     </div>
 
-                    {/* 2. Range Tanggal */}
+                    {/* Range Tanggal */}
                     <div className="space-y-2 lg:col-span-2">
                         <Label className="text-xs font-semibold text-gray-500">Rentang Tanggal</Label>
                         <div className="flex gap-2 items-center">
@@ -168,7 +215,7 @@ export default function HistoryPage() {
                         </div>
                     </div>
 
-                    {/* 3. Tipe & Departemen */}
+                    {/* Tipe & Departemen */}
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold text-gray-500">Tipe Transaksi</Label>
                         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -259,7 +306,6 @@ export default function HistoryPage() {
                               </TableCell>
                               <TableCell className="font-medium">
                                 <span className="block text-gray-800">{log.qr_code_produk || log.qr_code}</span>
-                                {/* Jika ingin menampilkan nama produk juga, perlu join data produk */}
                               </TableCell>
                               <TableCell>
                                 <span className={`font-bold text-base ${log.type === 'IN' ? 'text-green-600' : 'text-orange-600'}`}>
@@ -267,7 +313,6 @@ export default function HistoryPage() {
                                 </span>
                               </TableCell>
                               <TableCell>
-                                {/* IMPLEMENTASI KOLOM OLEH (Role + Nama) */}
                                 {getUserLabel(log.pic)}
                               </TableCell>
                               <TableCell>

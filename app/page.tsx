@@ -25,7 +25,7 @@ export default function LandingPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
         
         {/* Card 1: Kepala Gudang */}
-        <Link href="/inventory" className="group">
+        <Link href="/analytics" className="group">
           <Card className="h-full border-2 border-transparent hover:border-[#004aad] transition-all hover:shadow-xl cursor-pointer">
             <CardHeader className="text-center pb-2">
               <div className="w-16 h-16 bg-blue-100 text-[#004aad] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">

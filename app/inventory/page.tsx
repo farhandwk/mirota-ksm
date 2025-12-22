@@ -16,6 +16,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import Navbar from "../../components/Navbar"
 import { Search, Filter, X, Trash2, Pencil, Save, Loader2 } from "lucide-react"; // Tambah Icon
+import logo from "../../src/logo.png"
 
 // --- UTILITY: DEBOUNCE HOOK ---
 function useDebounce<T>(value: T, delay: number): T {
