@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import useSWR from 'swr';
-import * as XLSX from 'xlsx'; // 1. IMPORT XLSX
+import * as XLSX from 'xlsx';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from "../../components/ui/table";
@@ -17,15 +17,16 @@ import {
 import { format } from 'date-fns'; 
 import { id } from 'date-fns/locale'; 
 import Navbar from "../../components/Navbar"
-import { Filter, X, ArrowUpDown, Calendar, Download } from "lucide-react"; // 2. TAMBAH ICON DOWNLOAD
+import { Filter, X, ArrowUpDown, Calendar, Download } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function HistoryPage() {
-  // 1. Fetch Data
+  // 1. Fetch Data (TAMBAHKAN productsData)
   const { data: trxData, error } = useSWR('/api/transactions', fetcher);
   const { data: usersData } = useSWR('/api/users', fetcher);
   const { data: deptData } = useSWR('/api/departments', fetcher);
+  const { data: productsData } = useSWR('/api/products', fetcher); // <--- Fetch Produk
 
   // 2. State Filter
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -34,7 +35,21 @@ export default function HistoryPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // 3. Logic UI: Format "Oleh" (Role + Nama) untuk Tabel
+  // --- LOGIC LOOKUP NAMA PRODUK (BARU) ---
+  const getProductInfo = (qrCode: string) => {
+    if (!productsData?.data) return { name: qrCode, qr: qrCode };
+    
+    // Cari produk yang QR-nya cocok
+    const product = productsData.data.find((p: any) => p.qr_code === qrCode);
+    
+    if (product) {
+        return { name: product.name, qr: qrCode };
+    }
+    // Jika produk terhapus/tidak ketemu, tetap tampilkan QR sebagai nama
+    return { name: "Produk Tidak Dikenal", qr: qrCode };
+  };
+
+  // 3. Logic UI: Format "Oleh" (Role + Nama)
   const getUserLabel = (picName: string) => {
     if (!usersData?.data) return picName;
     const foundUser = usersData.data.find((u: any) => u.name === picName || u.username === picName);
@@ -50,7 +65,7 @@ export default function HistoryPage() {
     return picName;
   };
 
-  // 4. Logic Filtering (Client Side)
+  // 4. Logic Filtering
   const filteredData = useMemo(() => {
     if (!trxData?.data) return [];
 
@@ -79,7 +94,6 @@ export default function HistoryPage() {
     return result;
   }, [trxData, typeFilter, deptFilter, startDate, endDate, sortOrder]);
 
-  // Helper Format Tanggal
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'dd MMMM yyyy, HH:mm', { locale: id });
@@ -88,50 +102,48 @@ export default function HistoryPage() {
     }
   };
 
-  // --- 5. LOGIC EXPORT EXCEL (BARU) ---
+  // --- 5. EXPORT EXCEL (DIPERBARUI) ---
   const handleExport = () => {
     if (filteredData.length === 0) {
         alert("Tidak ada data untuk diekspor");
         return;
     }
 
-    // Mapping data agar rapi di Excel
     const excelData = filteredData.map((row) => {
-        // Cari nama lengkap User untuk report Excel
         let picName = row.pic;
         if (usersData?.data) {
             const foundUser = usersData.data.find((u: any) => u.name === row.pic || u.username === row.pic);
             if (foundUser) picName = `${foundUser.name} (${foundUser.role})`;
         }
 
+        // Ambil nama produk untuk Excel
+        const rawQr = row.qr_code_produk || row.qr_code;
+        const prodInfo = getProductInfo(rawQr);
+
         return {
             "Tanggal Waktu": formatDate(row.date),
             "Tipe": row.type,
-            "Kode QR Produk": row.qr_code_produk || row.qr_code,
+            "Nama Produk": prodInfo.name, // Kolom Nama Produk
+            "Kode QR": rawQr,             // Kolom QR
             "Jumlah": row.type === 'IN' ? `+${row.qty}` : `-${row.qty}`,
             "PIC (Petugas)": picName,
             "Departemen": row.dept_id
         };
     });
 
-    // Buat Workbook SheetJS
     const ws = XLSX.utils.json_to_sheet(excelData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Laporan Transaksi");
 
-    // Generate Nama File (misal: Laporan_2023-10-01_s.d_2023-10-31.xlsx)
     let fileName = "Laporan_Transaksi";
     if (startDate && endDate) {
         fileName += `_${startDate}_sd_${endDate}`;
     } else {
         fileName += `_${new Date().toISOString().split('T')[0]}`;
     }
-    
-    // Download File
     XLSX.writeFile(wb, `${fileName}.xlsx`);
   };
 
-  // Reset Filter
   const handleReset = () => {
     setSortOrder('newest');
     setTypeFilter('ALL');
@@ -153,12 +165,9 @@ export default function HistoryPage() {
             </div>
             
             <div className="flex items-center gap-2">
-                {/* Badge Total Data */}
                 <Badge variant="secondary" className="px-4 py-2 text-sm h-10">
                     Total: {filteredData.length} Data
                 </Badge>
-
-                {/* --- TOMBOL EXPORT (BARU) --- */}
                 <Button 
                     onClick={handleExport}
                     className="bg-green-600 hover:bg-green-700 text-white gap-2"
@@ -174,7 +183,6 @@ export default function HistoryPage() {
             <CardContent className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                     
-                    {/* Sort Order */}
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold text-gray-500">Urutkan</Label>
                         <Select value={sortOrder} onValueChange={(val: any) => setSortOrder(val)}>
@@ -189,33 +197,21 @@ export default function HistoryPage() {
                         </Select>
                     </div>
 
-                    {/* Range Tanggal */}
                     <div className="space-y-2 lg:col-span-2">
                         <Label className="text-xs font-semibold text-gray-500">Rentang Tanggal</Label>
                         <div className="flex gap-2 items-center">
                             <div className="relative w-full">
                                 <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                                <Input 
-                                    type="date" 
-                                    className="pl-9 bg-white"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                />
+                                <Input type="date" className="pl-9 bg-white" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                             </div>
                             <span className="text-gray-400">-</span>
                             <div className="relative w-full">
                                 <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                                <Input 
-                                    type="date" 
-                                    className="pl-9 bg-white"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                />
+                                <Input type="date" className="pl-9 bg-white" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                             </div>
                         </div>
                     </div>
 
-                    {/* Tipe & Departemen */}
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold text-gray-500">Tipe Transaksi</Label>
                         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -247,13 +243,12 @@ export default function HistoryPage() {
                     </div>
                 </div>
 
-                {/* Tombol Clear Filter */}
                 {(typeFilter !== 'ALL' || deptFilter !== 'ALL' || startDate || endDate) && (
-                     <div className="mt-4 flex justify-end">
+                      <div className="mt-4 flex justify-end">
                         <Button variant="ghost" size="sm" onClick={handleReset} className="text-red-500 hover:text-red-600 hover:bg-red-50">
                             <X className="w-4 h-4 mr-2"/> Hapus Filter
                         </Button>
-                     </div>
+                      </div>
                 )}
             </CardContent>
         </Card>
@@ -277,7 +272,8 @@ export default function HistoryPage() {
                   <TableRow>
                     <TableHead>Waktu</TableHead>
                     <TableHead>Tipe</TableHead>
-                    <TableHead>Barang (QR)</TableHead>
+                    {/* Header Tabel Berubah */}
+                    <TableHead>Produk</TableHead> 
                     <TableHead>Jumlah</TableHead>
                     <TableHead>Oleh (PIC)</TableHead>
                     <TableHead>Tujuan</TableHead>
@@ -291,7 +287,12 @@ export default function HistoryPage() {
                             </TableCell>
                         </TableRow>
                     ) : (
-                        filteredData.map((log: any) => (
+                        filteredData.map((log: any) => {
+                            // --- LOOKUP NAMA PRODUK ---
+                            const qrCode = log.qr_code_produk || log.qr_code;
+                            const productInfo = getProductInfo(qrCode);
+
+                            return (
                             <TableRow key={log.id}>
                               <TableCell className="font-mono text-xs text-gray-500">
                                 {formatDate(log.date)}
@@ -304,9 +305,17 @@ export default function HistoryPage() {
                                   {log.type}
                                 </Badge>
                               </TableCell>
+                              
+                              {/* --- KOLOM PRODUK (UPDATED) --- */}
                               <TableCell className="font-medium">
-                                <span className="block text-gray-800">{log.qr_code_produk || log.qr_code}</span>
+                                <div className="flex flex-col">
+                                    {/* Nama Produk (Utama) */}
+                                    <span className="text-gray-900 font-semibold">{productInfo.name}</span>
+                                    {/* Kode QR (Subtext) */}
+                                    <span className="text-xs text-gray-400 font-mono mt-0.5">{productInfo.qr}</span>
+                                </div>
                               </TableCell>
+
                               <TableCell>
                                 <span className={`font-bold text-base ${log.type === 'IN' ? 'text-green-600' : 'text-orange-600'}`}>
                                   {log.type === 'IN' ? '+' : '-'}{log.qty}
@@ -325,7 +334,7 @@ export default function HistoryPage() {
                                 )}
                               </TableCell>
                             </TableRow>
-                        ))
+                        )})
                     )}
                 </TableBody>
               </Table>
