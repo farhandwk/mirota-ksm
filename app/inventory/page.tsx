@@ -312,7 +312,6 @@ export default function InventoryPage() {
                             <TableCell className="align-top pt-4">
                                 <Badge variant="outline" className="border-[#004aad] text-[#004aad]">{item.department_id}</Badge>
                             </TableCell>
-                            
                             {/* --- TOMBOL AKSI --- */}
                             <TableCell className="align-top pt-4 text-right">
                                 <div className="flex justify-end gap-2">
