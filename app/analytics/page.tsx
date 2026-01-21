@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
       <div className="max-w-7xl mx-auto p-6 md:p-10 space-y-8">
         <div className="flex justify-between items-start">
             <div>
-                <h1 className="text-3xl font-bold text-[#004aad]">Dashboard</h1>
+                <h1 className="text-3xl font-bold text-[#004aad]">Dashboard Analytics</h1>
                 <p className="text-gray-500">Pantau performa gudang secara real-time.</p>
             </div>
             
