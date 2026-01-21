@@ -239,6 +239,13 @@ export default function InventoryPage() {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                        <Input 
+                            placeholder="Ketik nama produk..." 
+                            className="pl-9 bg-white"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                     </div>
                 </div>
                 <div className="w-full md:w-1/3 space-y-2">

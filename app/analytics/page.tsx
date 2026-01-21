@@ -119,6 +119,16 @@ export default function AnalyticsPage() {
               <div className="text-2xl font-bold text-red-700">{lowStockItems.length} <span className="text-xs font-normal">Item Kritis</span></div>
             </CardContent>
           </Card>
+
+          {/* <Card className={`shadow-sm border-l-4 ${lowStockItems.length > 0 ? 'border-l-red-500 bg-red-50' : 'border-l-green-500'}`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-red-700">Perlu Restock 2</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-700">{lowStockItems.length} <span className="text-xs font-normal">Item Kritis</span></div>
+            </CardContent>
+          </Card> */}
         </div>
 
         {/* --- SECTION 2: STOCK TREND CHART --- */}
