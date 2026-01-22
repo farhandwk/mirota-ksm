@@ -17,8 +17,9 @@ import { Badge } from "../../components/ui/badge";
 import Navbar from "../../components/Navbar"
 import { 
     Search, Filter, X, Trash2, Pencil, Save, Loader2, Plus, 
-    MoreHorizontal, QrCode, Package, Box, Layers 
+    MoreHorizontal, QrCode, Package, Box, Layers, Download, Eye
 } from "lucide-react";
+
 import { 
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator 
 } from "../../components/ui/dropdown-menu";
@@ -38,6 +39,8 @@ function useDebounce<T>(value: T, delay: number): T {
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function InventoryPage() {
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [selectedQrData, setSelectedQrData] = useState<{code: string, name: string} | null>(null);
   const { data, error, mutate } = useSWR('/api/products', fetcher);
   const { data: unitData } = useSWR('/api/units', fetcher);
   const { data: deptData } = useSWR('/api/departments', fetcher);
@@ -145,6 +148,42 @@ export default function InventoryPage() {
   const handleResetFilter = () => {
     setSearchQuery('');
     setSelectedDeptFilter('ALL');
+  };
+
+  const handleDownloadQR = (qrCode: string, productName: string) => {
+    const svg = document.getElementById(`qr-svg-${qrCode}`);
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    
+    // Tambahkan background putih agar QR terbaca jelas
+    img.onload = () => {
+      canvas.width = img.width + 40; // Padding
+      canvas.height = img.height + 40;
+      
+      if (ctx) {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 20, 20); // Draw dengan padding
+        
+        const pngFile = canvas.toDataURL("image/png");
+        const downloadLink = document.createElement("a");
+        downloadLink.download = `QR-${productName.replace(/\s+/g, '-')}.png`;
+        downloadLink.href = pngFile;
+        downloadLink.click();
+      }
+    };
+
+    img.src = "data:image/svg+xml;base64," + btoa(svgData);
+  };
+
+  // --- FUNGSI BUKA MODAL QR ---
+  const openQrModal = (item: any) => {
+    setSelectedQrData({ code: item.qr_code, name: item.name });
+    setIsQrModalOpen(true);
   };
 
   return (
@@ -309,8 +348,25 @@ export default function InventoryPage() {
                         <TableRow key={item.id} className="hover:bg-blue-50/40 transition-colors group border-b border-gray-50 last:border-0">
                             {/* Kolom QR */}
                             <TableCell className="pl-6 py-4">
-                                <div className="bg-white p-1.5 border border-gray-100 rounded-lg shadow-sm w-fit group-hover:scale-105 transition-transform duration-300 group-hover:shadow-md">
-                                    <QRCode value={item.qr_code} size={48} level="M" />
+                                <div 
+                                className="relative group w-fit cursor-pointer transition-all duration-300 hover:scale-105"
+                                onClick={() => openQrModal(item)}
+                                >
+                                    {/* Container QR Code */}
+                                    <div className="bg-white p-1.5 border border-gray-100 rounded-lg shadow-sm">
+                                        {/* Berikan ID unik agar bisa diambil fungsi download */}
+                                        <QRCode 
+                                            id={`qr-svg-${item.qr_code}`} 
+                                            value={item.qr_code} 
+                                            size={48} 
+                                            level="M" 
+                                        />
+                                    </div>
+
+                                    {/* OVERLAY HOVER (Kaca Pembesar) */}
+                                    <div className="absolute inset-0 bg-black/60 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
+                                        <Search className="w-6 h-6 text-white drop-shadow-md animate-in zoom-in duration-200" />
+                                    </div>
                                 </div>
                             </TableCell>
                             
@@ -356,9 +412,13 @@ export default function InventoryPage() {
                                             <Pencil className="w-4 h-4 mr-2 text-blue-600"/> 
                                             <span className="font-medium text-gray-700">Edit Data</span>
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => {/* TODO: Print Logic */}} className="cursor-pointer rounded-lg hover:bg-gray-50 focus:bg-gray-50 py-2">
-                                            <QrCode className="w-4 h-4 mr-2 text-gray-600"/> 
-                                            <span className="font-medium text-gray-700">Cetak Label</span>
+                                        <DropdownMenuItem 
+                                            onClick={() => handleDownloadQR(item.qr_code, item.name)} 
+                                            className="cursor-pointer rounded-lg hover:bg-gray-50 focus:bg-gray-50 py-2"
+                                        >
+                                            {/* Ganti Icon QrCode ke Download */}
+                                            <Download className="w-4 h-4 mr-2 text-gray-600"/> 
+                                            <span className="font-medium text-gray-700">Download QR</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator className="bg-gray-100 my-1"/>
                                         <DropdownMenuItem 
@@ -451,6 +511,53 @@ export default function InventoryPage() {
                         {isUpdating ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
                         Simpan Perubahan
                     </Button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- MODAL BESAR PREVIEW QR (GLASS STYLE) --- */}
+      {isQrModalOpen && selectedQrData && (
+        <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300"
+            onClick={() => setIsQrModalOpen(false)} // Klik luar untuk tutup
+        >
+            <div 
+                className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full animate-in zoom-in-95 duration-300 relative border border-white/20"
+                onClick={(e) => e.stopPropagation()} // Mencegah tutup saat klik dalam box
+            >
+                {/* Tombol Close */}
+                <button 
+                    onClick={() => setIsQrModalOpen(false)} 
+                    className="absolute top-4 right-4 p-2 bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full transition-colors"
+                >
+                    <X className="w-5 h-5"/>
+                </button>
+
+                <div className="flex flex-col items-center text-center space-y-6">
+                    <div className="space-y-1">
+                        <h3 className="text-xl font-bold text-gray-800">QR Code Produk</h3>
+                        <p className="text-sm text-gray-500">{selectedQrData.name}</p>
+                    </div>
+
+                    {/* QR Code Besar */}
+                    <div className="p-4 bg-white border-2 border-dashed border-gray-200 rounded-2xl shadow-inner">
+                        <QRCode value={selectedQrData.code} size={200} level="H" />
+                    </div>
+
+                    <div className="w-full space-y-3">
+                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[#004aad] font-mono text-lg font-bold tracking-wider">
+                            {selectedQrData.code}
+                        </div>
+                        
+                        <Button 
+                            className="w-full bg-[#004aad] hover:bg-blue-900 text-white shadow-lg shadow-blue-900/20 font-bold h-12 rounded-xl"
+                            onClick={() => handleDownloadQR(selectedQrData.code, selectedQrData.name)}
+                        >
+                            <Download className="w-5 h-5 mr-2" />
+                            Download Gambar QR
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>
