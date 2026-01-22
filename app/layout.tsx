@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 // Import Providers dari komponen buatan kita, BUKAN dari next-auth langsung
 import { Providers } from "../components/Providers"; 
-import { helvetica } from "@/lib/font";
+import { helvetica } from "../lib/font";
 import { Rubik } from 'next/font/google'
 
 const inter = Inter({ subsets: ["latin"] });
