@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { Download, Loader2, AlertCircle, XCircle, CheckCircle, Lock, X, Trash2, ClipboardCheck, History, CalendarDays } from "lucide-react"; 
+import { 
+  Download, Loader2, AlertCircle, XCircle, CheckCircle, Lock, X, Trash2, 
+  ClipboardCheck, History, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight 
+} from "lucide-react"; 
 import { Button } from "../../../components/ui/button"; 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../components/ui/card";
+import { Card, CardContent } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
@@ -33,6 +36,10 @@ export default function HalamanRiwayatOpname() {
   const [endDate, setEndDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL"); 
   const [sortOrder, setSortOrder] = useState("newest"); 
+
+  // --- 1. STATE PAGINASI ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10; // Tampilkan 10 item per halaman
 
   const fetchData = async () => {
     setLoading(true);
@@ -123,9 +130,25 @@ export default function HalamanRiwayatOpname() {
     return results;
   }, [rawData, startDate, endDate, statusFilter, sortOrder]);
 
+  // --- 2. LOGIC PAGINASI ---
+  // Reset halaman jika filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, statusFilter, sortOrder]);
+
+  // Hitung total halaman
+  const totalPages = Math.ceil(processedData.length / itemsPerPage);
+
+  // Potong data untuk halaman aktif
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return processedData.slice(startIndex, startIndex + itemsPerPage);
+  }, [processedData, currentPage]);
+
+
   // --- EXPORT ---
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(processedData);
+    const ws = XLSX.utils.json_to_sheet(processedData); // Export SEMUA data filter, bukan cuma page 1
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Riwayat");
     XLSX.writeFile(wb, `Opname_Export.xlsx`);
@@ -156,13 +179,19 @@ export default function HalamanRiwayatOpname() {
                 <p className="text-gray-500 mt-1 font-medium">Monitor hasil opname dan persetujuan selisih stok.</p>
             </div>
             
-            <Button 
-                onClick={handleExport} 
-                disabled={loading} 
-                className="relative z-10 bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 active:scale-95 transition-all font-bold px-6 h-11"
-            >
-                <Download className="w-4 h-4 mr-2" /> Export Excel
-            </Button>
+            <div className="relative z-10 flex items-center gap-3">
+                <div className="hidden md:flex flex-col items-end mr-2">
+                    <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total Laporan</span>
+                    <span className="text-2xl font-black text-gray-800 leading-none">{processedData.length}</span>
+                </div>
+                <Button 
+                    onClick={handleExport} 
+                    disabled={loading || processedData.length === 0} 
+                    className="bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 active:scale-95 transition-all font-bold px-6 h-11"
+                >
+                    <Download className="w-4 h-4 mr-2" /> Export Excel
+                </Button>
+            </div>
         </div>
 
         {/* --- FILTER SECTION (GLASS BAR) --- */}
@@ -240,11 +269,11 @@ export default function HalamanRiwayatOpname() {
                         {loading && (
                             <tr><td colSpan={7} className="px-6 py-20 text-center text-gray-500 flex flex-col items-center"><Loader2 className="w-8 h-8 animate-spin text-[#004aad] mb-2"/> Memuat riwayat...</td></tr>
                         )}
-                        {!loading && processedData.length === 0 && (
+                        {!loading && paginatedData.length === 0 && (
                             <tr><td colSpan={7} className="px-6 py-20 text-center text-gray-400 font-medium">Tidak ada data riwayat opname.</td></tr>
                         )}
                         
-                        {!loading && processedData.map((row, idx) => {
+                        {!loading && paginatedData.map((row, idx) => {
                             const isPending = row.status.includes('PENDING');
                             const isApproved = row.status.includes('APPROVED');
                             const isRejected = row.status.includes('REJECTED');
@@ -323,6 +352,58 @@ export default function HalamanRiwayatOpname() {
                     </tbody>
                 </table>
             </div>
+
+            {/* --- 3. PAGINATION CONTROLS (FOOTER) --- */}
+            {processedData.length > 0 && (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+                    <div className="text-sm text-gray-500">
+                        Menampilkan <b>{(currentPage - 1) * itemsPerPage + 1}</b> - <b>{Math.min(currentPage * itemsPerPage, processedData.length)}</b> dari <b>{processedData.length}</b> laporan
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                        >
+                            <ChevronsLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        
+                        <span className="text-sm font-medium px-2">
+                            Hal {currentPage} / {totalPages}
+                        </span>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                        >
+                            <ChevronsRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            )}
         </Card>
 
       </div>

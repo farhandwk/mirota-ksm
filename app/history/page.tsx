@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import * as XLSX from 'xlsx';
 import { 
@@ -17,7 +17,10 @@ import {
 import { format } from 'date-fns'; 
 import { id } from 'date-fns/locale'; 
 import Navbar from "../../components/Navbar"
-import { Filter, X, ArrowUpDown, Calendar, Download, History, FileText, Loader2, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { 
+    Filter, X, ArrowUpDown, Calendar, Download, History, FileText, Loader2, 
+    ArrowUpRight, ArrowDownLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight 
+} from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -35,6 +38,10 @@ export default function HistoryPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
+  // --- 3. STATE PAGINASI ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10; // Jumlah item per halaman
+
   // --- LOGIC LOOKUP NAMA PRODUK ---
   const getProductInfo = (qrCode: string) => {
     if (!productsData?.data) return { name: qrCode, qr: qrCode };
@@ -45,7 +52,7 @@ export default function HistoryPage() {
     return { name: "Produk Tidak Dikenal", qr: qrCode };
   };
 
-  // 3. Logic UI: Format "Oleh" (Role + Nama)
+  // 4. Logic UI: Format "Oleh" (Role + Nama)
   const getUserLabel = (picName: string) => {
     if (!usersData?.data) return picName;
     const foundUser = usersData.data.find((u: any) => u.name === picName || u.username === picName);
@@ -61,7 +68,7 @@ export default function HistoryPage() {
     return picName;
   };
 
-  // 4. Logic Filtering
+  // 5. Logic Filtering
   const filteredData = useMemo(() => {
     if (!trxData?.data) return [];
 
@@ -90,6 +97,22 @@ export default function HistoryPage() {
     return result;
   }, [trxData, typeFilter, deptFilter, startDate, endDate, sortOrder]);
 
+  // --- 6. LOGIC PAGINASI ---
+  // Reset halaman jika filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, deptFilter, startDate, endDate, sortOrder]);
+
+  // Hitung total halaman
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  // Potong data untuk halaman aktif
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredData, currentPage]);
+
+
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'dd MMM yyyy, HH:mm', { locale: id });
@@ -98,7 +121,7 @@ export default function HistoryPage() {
     }
   };
 
-  // --- 5. EXPORT EXCEL ---
+  // --- 7. EXPORT EXCEL ---
   const handleExport = () => {
     if (filteredData.length === 0) {
         alert("Tidak ada data untuk diekspor");
@@ -271,79 +294,136 @@ export default function HistoryPage() {
             ) : error ? (
               <div className="text-center py-20 text-red-500">Gagal mengambil data.</div>
             ) : (
-              <Table>
-                <TableHeader className="bg-gray-50/50 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-100">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-4 pl-6 font-bold text-gray-600">Waktu</TableHead>
-                    <TableHead className="py-4 font-bold text-gray-600 text-center">Tipe</TableHead>
-                    <TableHead className="py-4 font-bold text-gray-600">Produk</TableHead> 
-                    <TableHead className="py-4 font-bold text-gray-600 text-right">Jumlah</TableHead>
-                    <TableHead className="py-4 font-bold text-gray-600 pl-8">Oleh (PIC)</TableHead>
-                    <TableHead className="py-4 font-bold text-gray-600 pr-6 text-right">Tujuan</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredData.length === 0 ? (
-                        <TableRow>
-                            <TableCell colSpan={6} className="text-center py-16 text-gray-400">
-                                <History className="w-12 h-12 mx-auto mb-2 opacity-20"/>
-                                Tidak ada transaksi yang sesuai filter.
-                            </TableCell>
+                <>
+                {/* 1. TABLE CONTENT */}
+                <div className="min-h-[400px]">
+                    <Table>
+                        <TableHeader className="bg-gray-50/50 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-100">
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead className="py-4 pl-6 font-bold text-gray-600">Waktu</TableHead>
+                            <TableHead className="py-4 font-bold text-gray-600 text-center">Tipe</TableHead>
+                            <TableHead className="py-4 font-bold text-gray-600">Produk</TableHead> 
+                            <TableHead className="py-4 font-bold text-gray-600 text-right">Jumlah</TableHead>
+                            <TableHead className="py-4 font-bold text-gray-600 pl-8">Oleh (PIC)</TableHead>
+                            <TableHead className="py-4 font-bold text-gray-600 pr-6 text-right">Tujuan</TableHead>
                         </TableRow>
-                    ) : (
-                        filteredData.map((log: any) => {
-                            const qrCode = log.qr_code_produk || log.qr_code;
-                            const productInfo = getProductInfo(qrCode);
-                            const isIN = log.type === 'IN';
+                        </TableHeader>
+                        <TableBody>
+                            {paginatedData.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-16 text-gray-400">
+                                        <History className="w-12 h-12 mx-auto mb-2 opacity-20"/>
+                                        Tidak ada transaksi yang sesuai filter.
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                paginatedData.map((log: any) => {
+                                    const qrCode = log.qr_code_produk || log.qr_code;
+                                    const productInfo = getProductInfo(qrCode);
+                                    const isIN = log.type === 'IN';
 
-                            return (
-                            <TableRow key={log.id} className="hover:bg-blue-50/40 transition-colors border-b border-gray-50 last:border-0 group">
-                              <TableCell className="pl-6 py-4">
-                                <div className="text-xs font-mono text-gray-500 font-medium">
-                                    {formatDate(log.date)}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge 
-                                  variant="outline"
-                                  className={`border-0 px-3 py-1 font-bold ${isIN ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}
-                                >
-                                  {isIN ? <ArrowDownLeft className="w-3 h-3 mr-1"/> : <ArrowUpRight className="w-3 h-3 mr-1"/>}
-                                  {log.type}
-                                </Badge>
-                              </TableCell>
-                              
-                              <TableCell>
-                                <div className="flex flex-col">
-                                    <span className="text-gray-900 font-bold text-sm group-hover:text-[#004aad] transition-colors">{productInfo.name}</span>
-                                    <span className="text-[10px] text-gray-400 font-mono mt-0.5 bg-gray-100 px-1.5 py-0.5 rounded w-fit border border-gray-200">
-                                        {productInfo.qr}
-                                    </span>
-                                </div>
-                              </TableCell>
+                                    return (
+                                    <TableRow key={log.id} className="hover:bg-blue-50/40 transition-colors border-b border-gray-50 last:border-0 group">
+                                    <TableCell className="pl-6 py-4">
+                                        <div className="text-xs font-mono text-gray-500 font-medium">
+                                            {formatDate(log.date)}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge 
+                                        variant="outline"
+                                        className={`border-0 px-3 py-1 font-bold ${isIN ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}
+                                        >
+                                        {isIN ? <ArrowDownLeft className="w-3 h-3 mr-1"/> : <ArrowUpRight className="w-3 h-3 mr-1"/>}
+                                        {log.type}
+                                        </Badge>
+                                    </TableCell>
+                                    
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-900 font-bold text-sm group-hover:text-[#004aad] transition-colors">{productInfo.name}</span>
+                                            <span className="text-[10px] text-gray-400 font-mono mt-0.5 bg-gray-100 px-1.5 py-0.5 rounded w-fit border border-gray-200">
+                                                {productInfo.qr}
+                                            </span>
+                                        </div>
+                                    </TableCell>
 
-                              <TableCell className="text-right">
-                                <span className={`font-bold text-base ${isIN ? 'text-green-600' : 'text-orange-600'}`}>
-                                  {isIN ? '+' : '-'}{log.qty}
-                                </span>
-                              </TableCell>
-                              <TableCell className="pl-8">
-                                {getUserLabel(log.pic)}
-                              </TableCell>
-                              <TableCell className="text-right pr-6">
-                                {log.dept_id !== '-' ? (
-                                   <Badge variant="outline" className="bg-white border-blue-200 text-blue-700 font-medium shadow-sm">
-                                     {log.dept_id}
-                                   </Badge>
-                                ) : (
-                                  <span className="text-gray-300">-</span>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                        )})
-                    )}
-                </TableBody>
-              </Table>
+                                    <TableCell className="text-right">
+                                        <span className={`font-bold text-base ${isIN ? 'text-green-600' : 'text-orange-600'}`}>
+                                        {isIN ? '+' : '-'}{log.qty}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="pl-8">
+                                        {getUserLabel(log.pic)}
+                                    </TableCell>
+                                    <TableCell className="text-right pr-6">
+                                        {log.dept_id !== '-' ? (
+                                        <Badge variant="outline" className="bg-white border-blue-200 text-blue-700 font-medium shadow-sm">
+                                            {log.dept_id}
+                                        </Badge>
+                                        ) : (
+                                        <span className="text-gray-300">-</span>
+                                        )}
+                                    </TableCell>
+                                    </TableRow>
+                                )})
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                {/* 2. PAGINATION CONTROLS (FOOTER) */}
+                {filteredData.length > 0 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+                        <div className="text-sm text-gray-500">
+                            Menampilkan <b>{(currentPage - 1) * itemsPerPage + 1}</b> - <b>{Math.min(currentPage * itemsPerPage, filteredData.length)}</b> dari <b>{filteredData.length}</b> transaksi
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronsLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            
+                            <span className="text-sm font-medium px-2">
+                                Hal {currentPage} / {totalPages}
+                            </span>
+
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronsRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                )}
+                </>
             )}
           </CardContent>
         </Card>

@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import Navbar from '../../components/Navbar';
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Trash2, Plus, Building, Pencil, X, Save, Warehouse, Loader2, Info } from "lucide-react";
+import { 
+  Trash2, Plus, Building, Pencil, X, Save, Warehouse, Loader2, Info,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight // Import Icon Paginasi
+} from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -17,6 +20,10 @@ export default function DepartmentsPage() {
   const [formData, setFormData] = useState({ nama: '', deskripsi: '' });
   const [editingId, setEditingId] = useState<string | null>(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- STATE PAGINATION ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5; // Kita set 5 agar paginasi terlihat (karena data gudang biasanya sedikit)
 
   // Fungsi Reset Form
   const resetForm = () => {
@@ -70,6 +77,25 @@ export default function DepartmentsPage() {
     mutate();
     if (editingId === id) resetForm();
   }
+
+  // --- LOGIC PAGINATION ---
+  // Menghitung total halaman
+  const totalPages = data?.data ? Math.ceil(data.data.length / itemsPerPage) : 0;
+
+  // Memotong data sesuai halaman aktif
+  const paginatedData = useMemo(() => {
+    if (!data?.data) return [];
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return data.data.slice(startIndex, startIndex + itemsPerPage);
+  }, [data, currentPage]);
+
+  // Reset halaman jika data berubah (misal dihapus sampai habis di page tsb)
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
 
   return (
     // 1. BACKGROUND GRADIENT KONSISTEN
@@ -195,7 +221,8 @@ export default function DepartmentsPage() {
                                 </TableCell>
                             </TableRow>
                         ) : (
-                          data?.data?.map((dept: any) => (
+                          // Menggunakan paginatedData bukan data.data langsung
+                          paginatedData.map((dept: any) => (
                             <TableRow 
                                 key={dept.id} 
                                 className={`transition-colors border-b border-gray-50 last:border-0 ${
@@ -239,6 +266,58 @@ export default function DepartmentsPage() {
                         )}
                     </TableBody>
                 </Table>
+
+                {/* --- PAGINATION CONTROLS (FOOTER) --- */}
+                {data?.data?.length > 0 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+                        <div className="text-sm text-gray-500">
+                            Menampilkan <b>{(currentPage - 1) * itemsPerPage + 1}</b> - <b>{Math.min(currentPage * itemsPerPage, data.data.length)}</b> dari <b>{data.data.length}</b> gudang
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronsLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            
+                            <span className="text-sm font-medium px-2">
+                                Hal {currentPage} / {totalPages}
+                            </span>
+
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronsRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
 
